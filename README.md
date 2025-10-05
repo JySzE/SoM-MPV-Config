@@ -3,7 +3,8 @@
 </div>
 
 # **SoM MPV Config Info**
-SoM MPV is a preconfigured MPV bundle of lua scripts and config files etc, which can be used in a portable or installed manner.  
+SoM MPV is a preconfigured MPV bundle of lua scripts and config files etc, which can be used in a portable or installed manner.
+
 It is not meant to be the perfect configuration, there is no such thing.
 
 This repo is made for hosting of said files and to offer a place to submit issues and pull requests for any improvements you may offer.
