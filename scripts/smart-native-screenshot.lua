@@ -1,5 +1,6 @@
--- Version 1.3
--- 09/08/2025
+-- Linux Test Conf
+-- Version 0
+-- 03/05/2026
 
 local mp = require 'mp'
 local msg = require 'mp.msg'
@@ -56,6 +57,17 @@ local function tmp_dir_exists()
 end
 
 local function get_optipng_path()
+    local result = utils.subprocess({
+        args = { "which", "optipng" },
+        cancellable = false
+    })
+    if result.status == 0 and result.stdout then
+        local path = result.stdout:gsub("%s+$", "")
+        if path ~= "" and utils.file_info(path) then 
+            return path 
+        end
+    end
+    
     local scripts_path = mp.find_config_file("scripts")
     if not scripts_path then return nil end
     local base = utils.split_path(scripts_path)
