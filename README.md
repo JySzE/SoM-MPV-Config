@@ -29,11 +29,11 @@ Refer to the MPV manual for changing specific settings.*
 - **HDR Passthrough:** This config does NOT enable HDR passthrough. It is strictly for HDR & Dolby Vision to SDR tonemapping.  
 ### **SoM MPV Config is only available for:**
 - Windows
+- [Linux](https://github.com/JySzE/SoM-MPV-Config/tree/main-linux-wip)
 ### **Unsupported systems:**
 - macOS
 - Windows ARM CPUs
 - Intel based macOS
-- Linux
 - ChromeOS
 # **SoM MPV Download**
 
