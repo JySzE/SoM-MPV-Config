@@ -45,9 +45,11 @@ Refer to the MPV manual for changing specific settings.*
    - **Portable Mode** (SoM_MPV_Builder):
      - Must be in a non protected folders such as  `Documents`, `Downloads`, `Desktop`, etc
      - Will not work in `Program Files` or other protected folders
+     - Rerun to update
    - **Installer Mode** (SoM_MPV_Installer):
      - Installs MPV in `Program Files`
      - Creates proper shortcuts and file associations
+     - Rerun to update
    - **Uninstaller Mode** (SoM_MPV_Uninstaller):
      - Removes existing SoM MPV installation, does not affect portable
 
@@ -60,9 +62,11 @@ Refer to the MPV manual for changing specific settings.*
    - **Portable Mode** [[SoM_MPV_Builder.bat](https://gist.githubusercontent.com/JySzE/0d6417c84deceda8326e38804d31015b/raw/SoM_MPV_Builder.bat)]:
      - Must be placed in a non protected folders such as  `Documents`, `Downloads`, `Desktop`, etc 
      - Will not work in `Program Files` or other protected folders
+     - Rerun to update
    - **Installer Mode** [[SoM_MPV_Installer.bat](https://gist.githubusercontent.com/JySzE/07e04bc5f01c5d30850a494e7297db42/raw/SoM_MPV_Installer.bat)]:
      - Installs MPV in `Program Files`
      - Creates proper shortcuts and file associations
+     - Rerun to update
    - **Uninstaller Mode** [[SoM_MPV_Uninstaller.bat](https://gist.githubusercontent.com/JySzE/9f99789bc42710fba2fde19f8255b292/raw/SoM_MPV_Uninstaller.bat)]:
      - Removes existing SoM MPV installation, does not affect portable
 3. Press CTRL + S on the download page, set "Save as type" to `All Files (*.*)` to save as .bat
