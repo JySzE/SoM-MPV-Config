@@ -26,7 +26,9 @@ This repository hosts the files and provides a place to submit issues or pull re
 *Note: We encourage everyone who downloads it to experiment with settings, key binds, and customization.  
 Refer to the MPV manual for changing specific settings.*
 ## **Important Notes:**
-- **HDR Passthrough:** This config does NOT enable HDR passthrough. It is strictly for HDR & Dolby Vision to SDR tonemapping.  
+- **HDR Passthrough:** This config does NOT enable HDR passthrough. It is strictly for HDR & Dolby Vision to SDR tonemapping.
+- **Screenshots:** Defaults saves to the Desktop. To change this behavior, edit `/script-opts/smart-native-screenshot.conf.`     
+  Note: If you use OneDrive, you may need to set a custom save location outside of your synced Desktop folder to avoid conflicts.
 ### **SoM MPV Config is only available for:**
 - Windows
 - [Linux](https://github.com/JySzE/SoM-MPV-Config/tree/main-linux-wip?tab=readme-ov-file#som-mpv-download-for-linux)
