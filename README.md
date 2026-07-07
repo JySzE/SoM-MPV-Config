@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="128" height="128" alt="9da9e0c1c699ec1d6fb12e044c74b2ef" src="https://github.com/user-attachments/assets/c639a895-0bcd-467f-80dc-24331c8c753a" />
+ <img width="256" alt="SoM_Discord" src="https://github.com/user-attachments/assets/217b9285-00f6-4d6f-8bf9-bf34ea01fa60" />
 </div>
 
 # **SoM MPV Config Info**
