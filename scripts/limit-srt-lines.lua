@@ -36,7 +36,6 @@ local OUTLINE_COLOR, OUTLINE_ALPHA = "000000", "00"
 local SHADOW_COLOR, SHADOW_ALPHA   = "000000", "73"
 
 local function build_style_tags(osd_w, osd_h, ml, mt, mr, mb)
-    local video_w = osd_w - ml - mr
     local video_h = osd_h - mt - mb
     local scale = video_h / 720
 
@@ -58,14 +57,14 @@ local function build_style_tags(osd_w, osd_h, ml, mt, mr, mb)
     local an = row + col
 
     local pos_x
-    if align_x == "left" then pos_x = ml + margin_x
-    elseif align_x == "right" then pos_x = osd_w - mr - margin_x
-    else pos_x = ml + video_w / 2 end
+    if align_x == "left" then pos_x = margin_x
+    elseif align_x == "right" then pos_x = osd_w - margin_x
+    else pos_x = osd_w / 2 end
 
     local pos_y
-    if align_y == "top" then pos_y = mt + margin_y
-    elseif align_y == "center" then pos_y = mt + video_h / 2
-    else pos_y = osd_h - mb - margin_y end
+    if align_y == "top" then pos_y = margin_y
+    elseif align_y == "center" then pos_y = osd_h / 2
+    else pos_y = osd_h - margin_y end
 
     return string.format(
         "{\\pos(%d,%d)\\an%d\\fn%s\\fs%.1f%s%s\\bord%.2f\\shad%.2f\\blur%.2f\\fsp%.2f" ..
