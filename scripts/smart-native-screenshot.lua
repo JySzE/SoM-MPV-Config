@@ -1,6 +1,6 @@
--- Linux Test Conf
--- Version 0
--- 03/05/2026
+-- Linux Conf
+-- Version 1
+-- 09/11/2026 
 
 local mp = require 'mp'
 local msg = require 'mp.msg'
@@ -87,7 +87,7 @@ local function timestamp_string()
     )
 end
 
-local function save_with_optional_optipng(temp_path, final_path)
+local function save_with_optional_optipng(temp_path, opti_temp, final_path)
     local optipng_path = get_optipng_path()
     if not optipng_path or not utils.file_info(optipng_path) then
         os.remove(temp_path)
@@ -95,25 +95,34 @@ local function save_with_optional_optipng(temp_path, final_path)
         mp.osd_message("Screenshot failed: optipng not found")
         return
     end
-    
+
     local result = utils.subprocess({
-        args = { optipng_path, "-strip", "all", "-quiet", "-o0", "-out", final_path, temp_path },
+        args = { optipng_path, "-strip", "all", "-quiet", "-o0", "-out", opti_temp, temp_path },
         cancellable = false
     })
+
     if result.status == 0 then
         os.remove(temp_path)
-        mp.osd_message("Screenshot saved: " .. final_path)
+        local ok, err = os.rename(opti_temp, final_path)
+        if ok then
+            mp.osd_message("Screenshot saved: " .. final_path)
+        else
+            os.remove(opti_temp)
+            msg.error("Failed to move optimized file: " .. tostring(err))
+            mp.osd_message("Screenshot failed: file move error")
+        end
     else
         os.remove(temp_path)
+        if utils.file_info(opti_temp) then os.remove(opti_temp) end
         msg.error("optipng optimization failed - screenshot cancelled")
         mp.osd_message("Screenshot failed: optipng error")
     end
 end
 
-local function process_screenshot_after_delay(temp_path, final_path)
+local function process_screenshot_after_delay(temp_path, opti_temp, final_path)
     mp.add_timeout(0.2, function()
         if utils.file_info(temp_path) then
-            save_with_optional_optipng(temp_path, final_path)
+            save_with_optional_optipng(temp_path, opti_temp, final_path)
         else
             msg.warn("Screenshot file not found: " .. temp_path)
         end
@@ -124,21 +133,29 @@ local function smart_native_screenshot(mode)
     local filename = mp.get_property("filename") or "screenshot"
     local frame_num = mp.get_property_number("estimated-frame-number") or 0
     local timestamp = timestamp_string()
+    
     local base_name = string.format("%s_%s_F%d", filename, timestamp, frame_num)
     local final_path = utils.join_path(get_config_save_path(), base_name .. ".png")
 
+    local unique_id = os.time() .. "_" .. math.random(1000, 9999)
+    local temp_raw_name = "raw_snap_" .. unique_id .. ".png"
+    local temp_opti_name = "opti_snap_" .. unique_id .. ".png"
+
+    local temp_path
+    local opti_temp
+
     if tmp_dir_exists() then
         local tmp_dir = get_tmp_dir()
-        local temp_path = utils.join_path(tmp_dir, base_name .. ".png")
-        mp.commandv("screenshot-to-file", temp_path, mode)
-        process_screenshot_after_delay(temp_path, final_path)
+        temp_path = utils.join_path(tmp_dir, temp_raw_name)
+        opti_temp = utils.join_path(tmp_dir, temp_opti_name)
     else
-
         msg.info("tmp directory doesn't exist, using root dir method")
-        local temp_path = base_name .. "_raw.png"
-        mp.commandv("screenshot-to-file", temp_path, mode)
-        process_screenshot_after_delay(temp_path, final_path)
+        temp_path = temp_raw_name
+        opti_temp = temp_opti_name
     end
+
+    mp.commandv("screenshot-to-file", temp_path, mode)
+    process_screenshot_after_delay(temp_path, opti_temp, final_path)
 end
 
 mp.add_key_binding("", "smart-native-screenshot-nosubs", function() smart_native_screenshot("video") end)
