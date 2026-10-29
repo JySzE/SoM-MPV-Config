@@ -12,6 +12,11 @@ It is not meant to be the perfect configuration; there is no such thing.
 
 This repository hosts the files and provides a place to submit issues or pull requests for improvements.
 
+## Support
+If you find our projects useful, consider supporting here: 
+
+[![Seed Of Might Ko-fi](https://img.shields.io/badge/Ko--fi-Donate-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/seedofmight)
+
 ## **Quick Summary of Features:**
 
 - [GPU Next](https://github.com/mpv-player/mpv/wiki/GPU-Next-vs-GPU) + d3d11 Windows playback with hardware decoding
