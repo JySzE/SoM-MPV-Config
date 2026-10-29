@@ -31,7 +31,7 @@ Refer to the MPV manual for changing specific settings.*
 # **SoM MPV Download FOR LINUX**
 
 ## **Manual Download**
-1. Dependencies: MPV, OptiPNG, Git
+1. Dependencies: MPV, OptiPNG, Git, FFmpeg, FFprobe
 2. Open terminal and run `git clone -b main-linux-wip --depth 1 https://github.com/JySzE/SoM-MPV-Config ~/.config/mpv/`
 3. Open MPV and enjoy.
 
