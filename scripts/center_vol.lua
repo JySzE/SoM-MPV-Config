@@ -1,5 +1,5 @@
--- Version 1.0
--- 10/28/26
+-- Version 1.1
+-- 10/29/26
 
 -- Ctrl+vol up or down
 
@@ -8,8 +8,17 @@ local mp = require "mp"
 local center_gain_db = 0.0
 local step_db = 1.0
 
+local max_db = 15.0
+local min_db = -15.0
+
 local function update_center_volume(delta)
     center_gain_db = center_gain_db + delta
+
+    if center_gain_db > max_db then
+        center_gain_db = max_db
+    elseif center_gain_db < min_db then
+        center_gain_db = min_db
+    end
 
     local mult = 10 ^ (center_gain_db / 20)
 
