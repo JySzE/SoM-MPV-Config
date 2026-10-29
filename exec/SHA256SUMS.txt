@@ -11,9 +11,9 @@
 DE908E5BA742C4132F7628087CA40FE8588A681C9992AE136E1CEEE83DCD8139 optipng.exe
 
 # Tool: FFmpeg Gif Only Build (Windows 64-bit)
-# Original URL: https://github.com/JySzE/FFmpeg-GIF-BUILDS-ONLY/releases/tag/ffmpeg-gif-win-static-12
-BC18602C188696199F56ED1CFE8B08EAD9A2BAF26D445A9EF3321654225CE8FA ffmpeg.exe
+# Original URL: https://github.com/JySzE/FFmpeg-GIF-BUILDS-ONLY/releases/tag/ffmpeg-win-static-41
+F76691DBA1CD5385CBB680465505B905B1B362D628F5FFAB683093B1E7A138E7 ffmpeg.exe
 
 # Tool: FFprobe Gif Only Build (Windows 64-bit)
-# Original URL: https://github.com/JySzE/FFmpeg-GIF-BUILDS-ONLY/releases/tag/ffmpeg-gif-win-static-12
-A602EF391914986820D4FBB4E8E998FCE47B920D4BCBC042E313765A50CAC7C5 ffprobe.exe
+# Original URL: https://github.com/JySzE/FFmpeg-GIF-BUILDS-ONLY/releases/tag/ffmpeg-win-static-41
+61A872C27AB8F9C123EE4C6E14F6C4A9FCBA52059DE2F89F65458DAEADDE0A89 ffprobe.exe

@@ -1,17 +1,37 @@
--- Version 1.0 
--- 10/25/26
+-- Version 1.2
+-- 10/28/26
 -- by [SoM] Nikosan
 
--- Ctrl+g: open/close the GIF export menu. Mark start/end from inside the menu.
+-- Ctrl+g: open/close the export menu. Mark start/end from inside the menu.
 
 local mp = require 'mp'
 local utils = require 'mp.utils'
 local input = require 'mp.input'
 
+local is_windows_os = package.config:sub(1, 1) == '\\'
 local exec_dir = mp.command_native({'expand-path', '~~/exec'})
 
+local function executable_path(name)
+	local bundled = utils.join_path(exec_dir, name)
+	local bundled_info = utils.file_info(bundled)
+	if bundled_info and bundled_info.is_file then return bundled end
+	local separator = is_windows_os and ';' or ':'
+	for dir in (os.getenv('PATH') or ''):gmatch('[^' .. separator .. ']+') do
+		dir = dir:match('^%s*(.-)%s*$')
+		if dir:sub(1, 1) == '"' and dir:sub(-1) == '"' then
+			dir = dir:sub(2, -2)
+		end
+		if dir ~= '' then
+			local candidate = utils.join_path(dir, name)
+			local info = utils.file_info(candidate)
+			if info and info.is_file then return candidate end
+		end
+	end
+	return bundled
+end
+
 local cfg = {
-	ffmpeg = utils.join_path(exec_dir, 'ffmpeg.exe'),
+	ffmpeg = executable_path(is_windows_os and 'ffmpeg.exe' or 'ffmpeg'),
 	default_width = '',
 	default_fps = '',
 	default_speed = 1,
@@ -101,19 +121,29 @@ local function numeric_speed(s)
 	return n
 end
 
+local export_format = 'webp'
+
 local function filename_value(s)
 	s = trim(s)
-	if s:lower():sub(-4) == '.gif' then s = trim(s:sub(1, -5)) end
+	local ext = export_format == 'gif' and '.gif' or '.webp'
+	if s:lower():sub(-#ext) == ext then s = trim(s:sub(1, -#ext - 1)) end
 	if s == '' then return '' end
-
-	if s:find('[<>:"/\\|%?%*%c]') or s:match('[%. ]$') then
-		return nil, 'Invalid Windows filename.'
+	if #s - select(2, s:gsub('[\128-\191]', '')) > 160 then
+		return nil, 'Filename cannot exceed 160 characters.'
 	end
 
-	local root = (s:match('^([^%.]+)') or s):upper()
-	if root == 'CON' or root == 'PRN' or root == 'AUX' or root == 'NUL'
-		or root:match('^COM[1-9]$') or root:match('^LPT[1-9]$') then
-		return nil, 'Reserved Windows filename.'
+	if is_windows_os then
+		if s:find('[<>:"/\\|%?%*%c]') or s:match('[%. ]$') then
+			return nil, 'Invalid Windows filename.'
+		end
+
+		local root = (s:match('^([^%.]+)') or s):upper()
+		if root == 'CON' or root == 'PRN' or root == 'AUX' or root == 'NUL'
+			or root:match('^COM[1-9]$') or root:match('^LPT[1-9]$') then
+			return nil, 'Reserved Windows filename.'
+		end
+	elseif s:find('[/%c]') then
+		return nil, 'Invalid filename.'
 	end
 
 	return s
@@ -131,6 +161,7 @@ local caption_start_mark, caption_end_mark, caption_mark_source = nil, nil, nil
 local start_mark, end_mark, mark_source = nil, nil, nil
 local menu_open, editing, menu_index = false, false, 1
 local advanced_open = false
+local lossless_export = false
 local job = nil
 local active_temp_work = nil
 local active_export_request = nil
@@ -251,6 +282,7 @@ local function selected_subtitle(src)
 		label = trim(selected.title or selected.lang or codec),
 		codec = codec,
 		external_ass = selected.external and (codec == 'ass' or codec == 'ssa'),
+		external = not not selected.external,
 	}
 	if selected.external then
 		local path = selected['external-filename']
@@ -413,7 +445,6 @@ local function mark(which)
 	if mark_source ~= p then start_mark, end_mark = nil, nil end
 	mark_source = p
 	if which == 'start' then start_mark = now else end_mark = now end
-	say((which == 'start' and 'Start: ' or 'End: ') .. clock(now), 2)
 end
 
 local function mark_caption(which)
@@ -425,7 +456,6 @@ local function mark_caption(which)
 	if caption_mark_source ~= p then caption_start_mark, caption_end_mark = nil, nil end
 	caption_mark_source = p
 	if which == 'start' then caption_start_mark = now else caption_end_mark = now end
-	say((which == 'start' and 'Caption start: ' or 'Caption end: ') .. clock(now), 2)
 end
 
 local function output_directory(src)
@@ -448,11 +478,12 @@ local function output_target(src, from, to)
 	local stem = filename:gsub('%.[^%.]+$', '')
 	if stem == '' then stem = 'video' end
 	stem = stem:sub(1, 75)
+	local ext = export_format == 'gif' and 'gif' or 'webp'
 	local base = name_override ~= '' and name_override
-		or (stem .. '_' .. filename_clock(from) .. '_to_' .. filename_clock(to))
+		or (stem .. '_' .. filename_clock(from) .. '_to_' .. filename_clock(to) .. (speed ~= 1 and ('_' .. tostring(speed) .. 'x') or '') .. (export_format == 'webp' and lossless_export and '_lossless' or ''))
 	for i = 0, 999 do
 		local suffix = i == 0 and '' or ('_' .. string.format('%03d', i))
-		local candidate = utils.join_path(dir, base .. suffix .. '.gif')
+		local candidate = utils.join_path(dir, base .. suffix .. '.' .. ext)
 		if not utils.file_info(candidate) then return candidate end
 	end
 	return nil, 'Too many files with the same name in the output folder.'
@@ -461,6 +492,10 @@ end
 local font_extensions = {ttf = true, otf = true, ttc = true, otc = true, woff = true, woff2 = true}
 
 local function portable_temp_root()
+	if not is_windows_os then
+		local path = mp.command_native({'expand-path', '~~/tmp'})
+		return type(path) == 'string' and path ~= '' and path or nil
+	end
 	local scripts_path = mp.find_config_file('scripts')
 	if not scripts_path then return nil end
 	local base = utils.split_path(scripts_path)
@@ -475,21 +510,27 @@ local function temp_roots()
 		if type(path) ~= 'string' or trim(path) == '' then return end
 		local normalized = mp.command_native({'normalize-path', path})
 		path = type(normalized) == 'string' and normalized or path
-		if not seen[path:lower()] then
-			seen[path:lower()] = true
+		local key = is_windows_os and path:lower() or path
+		if not seen[key] then
+			seen[key] = true
 			roots[#roots + 1] = path
 		end
 	end
 	add(portable_temp_root())
+	if not is_windows_os then
+		add(os.getenv('XDG_RUNTIME_DIR'))
+		add(os.getenv('TMPDIR'))
+	end
 	add(os.getenv('TEMP'))
 	add(os.getenv('TMP'))
+	if not is_windows_os then add('/tmp') end
 	return roots
 end
 
-local function cleanup_temp_work(work)
+local function cleanup_temp_work(work, keep_file)
 	if not work then return end
 	for _, path in ipairs(work.files) do
-		if utils.file_info(path) and not os.remove(path) then
+		if path ~= keep_file and utils.file_info(path) and not os.remove(path) then
 			mp.msg.warn('GIFit: Could not remove temporary file: ' .. path)
 		end
 	end
@@ -502,6 +543,17 @@ local function remove_empty_legacy_directory(path)
 end
 
 local function process_start_epoch(pid)
+	if not is_windows_os then
+		local stat = utils.file_info('/proc/' .. pid)
+		if not stat then return 0 end
+		if not stat.is_dir then return -1 end
+		local process = mp.command_native({
+			name = 'subprocess', args = {'ps', '-p', pid, '-o', 'etimes='},
+			playback_only = false, capture_stdout = true, capture_stderr = true,
+		})
+		local elapsed = process and process.status == 0 and tonumber(process.stdout)
+		return elapsed and elapsed >= 0 and (os.time() - elapsed) or -1
+	end
 	local result = mp.command_native({
 		name = 'subprocess',
 		args = {'tasklist.exe', '/FI', 'PID eq ' .. pid, '/FO', 'CSV', '/NH'},
@@ -526,6 +578,27 @@ local function process_start_epoch(pid)
 	return tonumber(trim(details.stdout)) or -1
 end
 
+local function cleanup_staging_record(record, prefix)
+	local file = io.open(record, 'rb')
+	if not file then return end
+	local staging = file:read(4097)
+	file:close()
+	local filename = staging and staging:match('[^/\\]+$')
+	local absolute = staging and (staging:match('^%a:[/\\]') or staging:match('^\\\\') or staging:sub(1, 1) == '/')
+	if staging and #staging <= 4096 and not staging:find('[\r\n%z]') and absolute
+		and filename == prefix .. '-staging.tmp' then
+		if utils.file_info(staging) and not os.remove(staging) then
+			mp.msg.warn('GIFit: Could not remove abandoned staging file: ' .. staging)
+			return
+		end
+	else
+		mp.msg.warn('GIFit: Invalid staging record: ' .. record)
+	end
+	if not os.remove(record) then
+		mp.msg.warn('GIFit: Could not remove staging record: ' .. record)
+	end
+end
+
 local function cleanup_abandoned_temp_files()
 	local checked = {}
 	local function abandoned(pid, created)
@@ -539,11 +612,15 @@ local function cleanup_abandoned_temp_files()
 			if pid then
 				local ext = item:match('^mkv%-%d+%.([%a%d]+)$')
 					or item:match('^portable%-%d+%.([%a%d]+)$')
-				local owned = item == 'caption.srt' or item == 'probe.tmp'
+				local owned = item == 'caption.srt' or item == 'probe.tmp' or item == 'job.tmp'
+					or item == 'output.webp' or item == 'output.gif' or item == 'staging.txt'
+					or item == 'subtitle.ass'
 					or (ext and font_extensions[ext:lower()])
 				if owned and abandoned(pid, created) then
 					local path = utils.join_path(root, name)
-					if not os.remove(path) then
+					if item == 'staging.txt' then
+						cleanup_staging_record(path, name:sub(1, -#item - 2))
+					elseif not os.remove(path) then
 						mp.msg.warn('GIFit: Could not remove abandoned file: ' .. path)
 					end
 				end
@@ -569,7 +646,7 @@ local function cleanup_abandoned_temp_files()
 	end
 end
 
-local probe_exe = utils.join_path(exec_dir, 'ffprobe.exe')
+local probe_exe = executable_path(is_windows_os and 'ffprobe.exe' or 'ffprobe')
 
 local function ffprobe_json(src, options)
 	local args = {probe_exe, '-v', 'error'}
@@ -693,7 +770,7 @@ local function copy_font_file(from, to)
 end
 
 local function prepare_temp_work(fonts)
-	local work
+	local work, last_error
 	for _, root in ipairs(temp_roots()) do
 		local stat = utils.file_info(root)
 		if stat and stat.is_dir then
@@ -701,24 +778,36 @@ local function prepare_temp_work(fonts)
 				temp_work_counter = temp_work_counter + 1
 				local prefix = string.format('gifit-%s-%s-%d',
 					tostring(utils.getpid()), tostring(os.time()), temp_work_counter)
-				local probe = utils.join_path(root, prefix .. '-probe.tmp')
-				if not utils.file_info(probe) then
-					local handle = io.open(probe, 'wb')
-					if handle then
-						local closed = handle:close()
-						local removed = os.remove(probe)
-						if closed and removed then
-							work = {dir = root, prefix = prefix, files = {}, fonts = {}}
-							break
-						end
+				local marker = utils.join_path(root, prefix .. '-job.tmp')
+				if not utils.file_info(marker)
+					and not utils.file_info(utils.join_path(root, prefix .. '-probe.tmp'))
+					and not utils.file_info(utils.join_path(root, prefix .. '-output.webp'))
+					and not utils.file_info(utils.join_path(root, prefix .. '-output.gif'))
+					and not utils.file_info(utils.join_path(root, prefix .. '-staging.txt'))
+					and not utils.file_info(utils.join_path(root, prefix .. '-caption.srt'))
+					and not utils.file_info(utils.join_path(root, prefix .. '-subtitle.ass')) then
+					local handle, open_err = io.open(marker, 'wb')
+					if not handle then
+						last_error = 'Cannot create job marker in ' .. root .. ': ' .. tostring(open_err)
+						mp.msg.warn('GIFit: ' .. last_error)
+						break
 					end
+					local closed, close_err = handle:close()
+					if not closed then
+						last_error = 'Cannot close job marker in ' .. root .. ': ' .. tostring(close_err)
+						mp.msg.warn('GIFit: ' .. last_error)
+						os.remove(marker)
+						break
+					end
+					work = {dir = root, prefix = prefix, files = {marker}, fonts = {}}
+					break
 				end
 			end
 		end
 		if work then break end
 	end
 	if not work then
-		return nil, 'Cannot write temporary files to portable_config/tmp or the Windows TEMP folder.'
+		return nil, last_error or 'Cannot write temporary files to any configured temp directory.'
 	end
 	mp.msg.info('GIFit: Temporary files in: ' .. work.dir .. ' (prefix ' .. work.prefix .. ')')
 
@@ -729,33 +818,89 @@ local function prepare_temp_work(fonts)
 		work.files[#work.files + 1] = path
 	end
 
-	if #fonts > 0 then
-		local fontsdir = mpv_fonts_dir()
-		local existing = fontsdir and utils.readdir(fontsdir, 'files') or {}
-		for i, name in ipairs(existing or {}) do
-			local extension = name:match('%.([%a%d]+)$')
-			if extension and font_extensions[extension:lower()] then
-				local from = utils.join_path(fontsdir, name)
-				local to = utils.join_path(work.dir, string.format('%s-portable-%03d.%s',
-					work.prefix, i, extension:lower()))
-				if copy_font_file(from, to) then
-					work.files[#work.files + 1] = to
-				else
-					mp.msg.warn('GIFit: Could not provide portable font: ' .. name)
-				end
-			end
-		end
-	end
 	return work
 end
 
-local function build_args(src, from, to, dest, limits, subtitle, temp_work)
+local function publish_temp_output(work, temporary, destination)
+	local dir = utils.split_path(destination)
+	local staging = utils.join_path(dir, work.prefix .. '-staging.tmp')
+	local record = utils.join_path(work.dir, work.prefix .. '-staging.txt')
+	if utils.file_info(destination) then return false, 'Output filename is now in use.' end
+	if utils.file_info(staging) then return false, 'Temporary staging filename is already in use.' end
+
+	local file, err = io.open(record, 'wb')
+	if not file then return false, 'Cannot create staging record: ' .. tostring(err) end
+	local written, write_err = file:write(staging)
+	local closed, close_err = file:close()
+	if not written or not closed then
+		os.remove(record)
+		return false, 'Cannot write staging record: ' .. tostring(write_err or close_err)
+	end
+
+	local function clear_staging()
+		if utils.file_info(staging) and not os.remove(staging) then
+			mp.msg.warn('GIFit: Staging file retained for startup cleanup: ' .. staging)
+			return
+		end
+		if not os.remove(record) then
+			mp.msg.warn('GIFit: Staging record retained for startup cleanup: ' .. record)
+		end
+	end
+
+	if not copy_font_file(temporary, staging) then
+		clear_staging()
+		return false, 'Could not copy export to the destination folder.'
+	end
+	local source_info, stage_info = utils.file_info(temporary), utils.file_info(staging)
+	if not source_info or not stage_info or stage_info.size ~= source_info.size then
+		clear_staging()
+		return false, 'Staged export size does not match the encoded file.'
+	end
+	if utils.file_info(destination) then
+		clear_staging()
+		return false, 'Output filename became occupied during export.'
+	end
+	if is_windows_os then
+		local ok, rename_err = os.rename(staging, destination)
+		clear_staging()
+		if not ok then return false, 'Cannot finalize export: ' .. tostring(rename_err) end
+	else
+		local result = mp.command_native({
+			name = 'subprocess', args = {'ln', '--', staging, destination},
+			playback_only = false, capture_stdout = true, capture_stderr = true,
+		})
+		local ok = result and result.status == 0
+		clear_staging()
+		if not ok then
+			return false, 'Cannot finalize export: ' .. tostring(result and result.stderr or 'hard-link failed')
+		end
+	end
+	return true
+end
+
+local function inclusive_timing(from, to, limits)
+	local rate = limits and limits.fps
+	local frame_time = rate and rate > 0 and 1 / rate or nil
+	local seek_from = math.max(0, from - 0.001)
+	local trim_end = to - seek_from + (frame_time and frame_time / 2 or 0.002)
+	return {
+		frame_time = frame_time,
+		seek_from = seek_from,
+		trim_end = trim_end,
+		duration = to - from + (frame_time or 0),
+	}
+end
+
+local function build_args(src, dest, limits, subtitle, temp_work, timing)
+	local seek_from, trim_end = timing.seek_from, timing.trim_end
 	local subtitle_filter = ''
 	if subtitle then
 		local is_ass = subtitle.codec == 'ass' or subtitle.codec == 'ssa'
-		local timing = subtitle.custom and 'setpts=PTS-STARTPTS,' or
-			('setpts=PTS+' .. string.format('%.3f', from - (mp.get_property_number('sub-delay') or 0)) .. '/TB,')
-		subtitle_filter = timing .. 'subtitles=filename=' .. subtitle_filter_path(subtitle.path)
+		local subtitle_time = seek_from - (subtitle.delay or (mp.get_property_number('sub-delay') or 0))
+		if subtitle.clip_seek then subtitle_time = subtitle_time - subtitle.clip_seek end
+		local subtitle_timing = subtitle.custom and 'setpts=PTS-STARTPTS,' or
+			('setpts=PTS+' .. string.format('%.6f', subtitle_time) .. '/TB,')
+		subtitle_filter = subtitle_timing .. 'subtitles=filename=' .. subtitle_filter_path(subtitle.path)
 		if subtitle.si then subtitle_filter = subtitle_filter .. ':si=' .. subtitle.si end
 		if is_ass then
 			subtitle_filter = subtitle_filter .. ':original_size=' .. limits.source_w .. 'x' .. limits.source_h
@@ -763,7 +908,12 @@ local function build_args(src, from, to, dest, limits, subtitle, temp_work)
 		if subtitle.pc_matrix then
 			subtitle_filter = subtitle_filter .. ":force_style='YCbCr Matrix=" .. subtitle.pc_matrix .. "'"
 		end
-		local fontsdir = temp_work and #temp_work.fonts > 0 and temp_work.dir or mpv_fonts_dir()
+		local fontsdir
+		if is_ass then
+			if temp_work and #temp_work.fonts > 0 then fontsdir = temp_work.dir end
+		else
+			fontsdir = mpv_fonts_dir()
+		end
 		if fontsdir then subtitle_filter = subtitle_filter .. ':fontsdir=' .. subtitle_filter_path(fontsdir) end
 		if not is_ass then
 			local style = subtitle_style()
@@ -772,26 +922,25 @@ local function build_args(src, from, to, dest, limits, subtitle, temp_work)
 		subtitle_filter = subtitle_filter .. (subtitle.custom and ',' or ',setpts=PTS-STARTPTS,')
 	end
 	local fps_filter = fps == '' and '' or ('fps=' .. fps .. ',')
-	local resize
-	if width == '' then
-		resize = 'scale=iw:ih/sar:flags=lanczos,setsar=1,'
-	else
-		resize = 'scale=' .. width .. ':ih*' .. width .. '/iw/sar:flags=lanczos,setsar=1,'
-	end
-	local output_fps = tonumber(fps) or limits.fps
-	local final_delay = -1
-	if speed ~= 1 and output_fps then
-		final_delay = math.max(1, math.min(65535, math.floor(100 / (output_fps * speed) + 0.5)))
-	end
+	local resize_width = width == '' and 'iw' or width
+	local resize_height = width == '' and 'ih/sar' or ('ih*' .. width .. '/iw/sar')
+	local resize = 'scale=' .. resize_width .. ':' .. resize_height .. ':flags=lanczos,setsar=1,'
 	local speed_filter = speed == 1 and '' or ('settb=AVTB,setpts=(PTS-STARTPTS)/' .. speed .. ',')
-	local graph = '[0:v:0]' .. fps_filter .. resize .. subtitle_filter .. speed_filter ..
-		'split[v1][v2];' ..
-		'[v1]palettegen=stats_mode=full:reserve_transparent=0[p];' ..
-		'[v2][p]paletteuse=dither=sierra3:diff_mode=rectangle[v]'
+	local graph
+	if export_format == 'gif' then
+		graph = '[0:v:0]trim=end=' .. string.format('%.6f', trim_end) .. ',' ..
+			fps_filter .. resize .. subtitle_filter .. speed_filter ..
+			'split[v1][v2];' ..
+			'[v1]palettegen=max_colors=256:stats_mode=full:reserve_transparent=0[p];' ..
+			'[v2][p]paletteuse=dither=sierra3:diff_mode=rectangle[v]'
+	else
+		graph = '[0:v:0]trim=end=' .. string.format('%.6f', trim_end) .. ',' ..
+			fps_filter .. resize .. subtitle_filter .. speed_filter .. 'format=bgra[v]'
+	end
 	local args = {
 		cfg.ffmpeg, '-hide_banner', '-nostats', '-loglevel', 'error',
-		'-n', '-ss', string.format('%.3f', from),
-		'-t', string.format('%.3f', to - from),
+		'-n', '-ss', string.format('%.6f', seek_from),
+		'-t', string.format('%.6f', trim_end + 0.100),
 	}
 	if temp_work and #temp_work.fonts > 0 then
 		for _, font in ipairs(temp_work.fonts) do
@@ -799,15 +948,28 @@ local function build_args(src, from, to, dest, limits, subtitle, temp_work)
 			args[#args + 1] = font.path
 		end
 	end
-	for _, arg in ipairs({'-i', src, '-filter_complex', graph,
-		'-map', '[v]', '-an', '-sn', '-dn', '-fps_mode', 'passthrough',
-		'-enc_time_base:v', 'filter', '-final_delay', tostring(final_delay), '-loop', '0', dest}) do
-		args[#args + 1] = arg
+	local encoder_args
+	if export_format == 'gif' then
+		local output_fps = tonumber(fps) or limits.fps
+		local final_delay = -1
+		if speed ~= 1 and output_fps then
+			final_delay = math.max(1, math.min(65535, math.floor(100 / (output_fps * speed) + 0.5)))
+		end
+		encoder_args = {'-map', '[v]', '-an', '-sn', '-dn', '-fps_mode', 'passthrough',
+			'-enc_time_base:v', 'filter', '-final_delay', tostring(final_delay), '-loop', '0'}
+	else
+		encoder_args = {'-map', '[v]', '-fps_mode', 'passthrough',
+			'-enc_time_base:v', 'filter', '-c:v', 'libwebp_anim', '-lossless', lossless_export and '1' or '0',
+			'-quality', lossless_export and '0' or '100',
+			'-compression_level', lossless_export and '0' or '4', '-pix_fmt', 'bgra', '-loop', '0'}
 	end
+	for _, arg in ipairs({'-i', src, '-filter_complex', graph}) do args[#args + 1] = arg end
+	for _, arg in ipairs(encoder_args) do args[#args + 1] = arg end
+	args[#args + 1] = dest
 	return args
 end
 
-local function export_gif()
+local function export_media()
 	if job then say('An export is already running.'); return end
 	local src, err = source_path()
 	if not src then say(err, 4); return end
@@ -831,7 +993,7 @@ local function export_gif()
 		return
 	end
 	local subtitle
-	if subtitles_enabled then
+	if subtitles_enabled and not caption_enabled then
 		local sub_err
 		subtitle, sub_err = selected_subtitle(src)
 		if not subtitle then say(sub_err, 7); return end
@@ -842,8 +1004,9 @@ local function export_gif()
 			mp.msg.info('GIFit: ASS matrix override: ' .. subtitle.pc_matrix)
 		end
 	end
-	local duration = end_mark - start_mark
-	if duration < 0.001 then say('Selected clip is too short.'); return end
+	local timing = inclusive_timing(start_mark, end_mark, limits)
+	local duration = timing.duration
+	if end_mark - start_mark < 0.001 then say('Selected clip is too short.'); return end
 	local dest, dest_err = output_target(src, start_mark, end_mark)
 	if not dest then say(dest_err, 5); return end
 	local caption_from, caption_to
@@ -855,20 +1018,17 @@ local function export_gif()
 		caption_from = math.max(start_mark, caption_start_mark or start_mark)
 		caption_to = math.min(end_mark, caption_end_mark or end_mark)
 		if caption_to - caption_from < 0.001 then
-			say('Caption timing must overlap the GIF and end after it starts.', 6)
+			say('Caption timing must overlap the export and end after it starts.', 6)
 			return
 		end
 	end
 	local fonts = {}
-	if subtitle and subtitle.external_ass and src:lower():match('%.mk[vs]$') then
+	if subtitle and (subtitle.codec == 'ass' or subtitle.codec == 'ssa')
+		and src:lower():match('%.mk[vs]$') then
 		fonts = external_ass_fonts(src)
 	end
-	local temp_work
-	if caption_enabled or #fonts > 0 then
-		local temp_err
-		temp_work, temp_err = prepare_temp_work(fonts)
-		if not temp_work then say(temp_err, 7); return end
-	end
+	local temp_work, temp_err = prepare_temp_work(fonts)
+	if not temp_work then say(temp_err, 7); return end
 	if caption_enabled then
 		local caption_file = utils.join_path(temp_work.dir, temp_work.prefix .. '-caption.srt')
 		mp.msg.info('GIFit: Temporary caption: ' .. caption_file)
@@ -880,7 +1040,7 @@ local function export_gif()
 			return
 		end
 		local srt_start = clock(caption_from - start_mark):gsub('%.', ',')
-		local srt_end = clock(caption_to - start_mark):gsub('%.', ',')
+		local srt_end = clock(caption_to - start_mark + (timing.frame_time or 0.002) / 2):gsub('%.', ',')
 		local written, write_err = file:write('1\r\n' .. srt_start .. ' --> ' .. srt_end .. '\r\n' .. caption_text .. '\r\n')
 		local closed, close_err = file:close()
 		if not written or not closed then
@@ -890,24 +1050,40 @@ local function export_gif()
 		end
 		subtitle = {path = caption_file, codec = 'subrip', custom = true}
 	end
+	if utils.file_info(dest) then
+		cleanup_temp_work(temp_work)
+		say('Output filename is now in use. Try exporting again.', 5)
+		return
+	end
+	local temp_output = utils.join_path(temp_work.dir, temp_work.prefix .. '-output.' .. export_format)
+	temp_work.files[#temp_work.files + 1] = temp_output
 	active_temp_work = temp_work
-	local args = build_args(src, start_mark, end_mark, dest, limits, subtitle, temp_work)
 	mp.msg.info('GIFit: Using ' .. cfg.ffmpeg .. ' via mpv subprocess')
 	if menu_open then close_menu() end
-	say('Exporting ' .. clock(duration / speed) .. ' GIF in background...', 4)
-	mp.msg.info('GIFit: ' .. table.concat(args, ' | '))
 	job = true
-	local function finished(success, result, error_text)
+	say('Exporting ' .. clock(duration / speed) .. ' ' .. (export_format == 'gif' and 'GIF' or 'WebP') .. ' in background...', 4)
+	local function preparation_failed(message)
 		cleanup_temp_work(temp_work)
 		if active_temp_work == temp_work then active_temp_work = nil end
 		active_export_request = nil
 		job = nil
-		local stat = utils.file_info(dest)
+		mp.msg.error('GIFit: ' .. message)
+		say(shorten(message, 220), 8)
+	end
+	local function finished(success, result, error_text)
+		local stat = utils.file_info(temp_output)
 		local exit_code = result and result.status
 		local proc_error = result and result.error_string or ''
 		local stderr = type(result) == 'table' and result.stderr or ''
 		if type(stderr) ~= 'string' then stderr = tostring(stderr or '') end
-		if success and exit_code == 0 and stat and stat.is_file and stat.size > 0 then
+		local encoded = success and exit_code == 0 and stat and stat.is_file and stat.size > 0
+		local published, publish_err = false, nil
+		if encoded then published, publish_err = publish_temp_output(temp_work, temp_output, dest) end
+		cleanup_temp_work(temp_work, encoded and not published and temp_output or nil)
+		if active_temp_work == temp_work then active_temp_work = nil end
+		active_export_request = nil
+		job = nil
+		if published then
 			mp.msg.info('GIFit created: ' .. dest)
 			say('Created: ' .. dest, 7)
 		else
@@ -917,7 +1093,10 @@ local function export_gif()
 				tostring(error_text), cfg.ffmpeg, stderr)
 			mp.msg.error(logline)
 			local detail
-			if not success then
+			if publish_err then
+				mp.msg.warn('GIFit: Completed export retained until next startup: ' .. temp_output)
+				detail = publish_err .. ' Completed export retained in GIFit temp; see mpv log.'
+			elseif not success then
 				detail = 'mpv command error: ' .. tostring(error_text or 'unknown')
 			elseif proc_error == 'init' then
 				detail = 'Could not launch ' .. cfg.ffmpeg .. ' (init error). See mpv log.'
@@ -927,24 +1106,58 @@ local function export_gif()
 				detail = 'FFmpeg exit code ' .. tostring(exit_code) .. ': ' ..
 					(trim(stderr) ~= '' and trim(stderr) or 'See mpv log.')
 			else
-				detail = 'FFmpeg returned success but no GIF was created: ' .. dest
+				detail = 'FFmpeg returned success but no temporary export was created.'
 			end
 			say(shorten(detail, 220), 9)
 		end
 		if menu_open then draw_menu() end
 	end
-	local request, request_error = mp.command_native_async({
-		name = 'subprocess',
-		args = args,
-		playback_only = false,
-		capture_stderr = true,
-	}, finished)
-	if request then active_export_request = request end
-	if not request then
-		cleanup_temp_work(temp_work)
-		active_temp_work = nil
-		job = nil
-		mp.msg.error('GIFit: Could not schedule FFmpeg: ' .. tostring(request_error))
+	local function start_encoding()
+		local args = build_args(src, temp_output, limits, subtitle, temp_work, timing)
+		mp.msg.info('GIFit: ' .. table.concat(args, ' | '))
+		local request, request_error = mp.command_native_async({
+			name = 'subprocess', args = args,
+			playback_only = false, capture_stderr = true,
+		}, finished)
+		if request then active_export_request = request
+		else preparation_failed('Could not schedule FFmpeg: ' .. tostring(request_error)) end
+	end
+	if subtitle and not subtitle.external and not subtitle.custom then
+		local subtitle_file = utils.join_path(temp_work.dir, temp_work.prefix .. '-subtitle.ass')
+		temp_work.files[#temp_work.files + 1] = subtitle_file
+		local delay = mp.get_property_number('sub-delay') or 0
+		local clip_seek = math.max(0, math.floor(timing.seek_from - delay - 15))
+		local clip_end = math.max(0, end_mark - delay + (timing.frame_time or 0.002) + 1)
+		local clip_length = math.max(0.1, clip_end - clip_seek)
+		local args = {cfg.ffmpeg, '-hide_banner', '-nostats', '-loglevel', 'error',
+			'-nostdin', '-n', '-ss', string.format('%.6f', clip_seek),
+			'-i', src, '-map', '0:' .. subtitle.ff_index,
+			'-vn', '-an', '-dn', '-t', string.format('%.6f', clip_length),
+			'-c:s', 'ass', '-f', 'ass', subtitle_file}
+		mp.msg.info('GIFit: Extracting selected subtitle stream around ' .. clock(start_mark) ..
+			' to ' .. clock(end_mark) .. ' into ' .. subtitle_file)
+		local request, request_error = mp.command_native_async({
+			name = 'subprocess', args = args,
+			playback_only = false, capture_stderr = true,
+		}, function(success, result, error_text)
+			if active_temp_work ~= temp_work then return end
+			active_export_request = nil
+			local stat = utils.file_info(subtitle_file)
+			if not success or not result or result.status ~= 0 or not stat or not stat.is_file or stat.size == 0 then
+				local detail = result and trim(result.stderr or '') or tostring(error_text or 'unknown error')
+				preparation_failed('Could not extract the selected subtitle segment: ' .. shorten(detail, 180))
+				return
+			end
+			subtitle.path = subtitle_file
+			subtitle.si = nil
+			subtitle.clip_seek = clip_seek
+			subtitle.delay = delay
+			start_encoding()
+		end)
+		if request then active_export_request = request
+		else preparation_failed('Could not schedule subtitle extraction: ' .. tostring(request_error)) end
+	else
+		start_encoding()
 	end
 end
 
@@ -963,10 +1176,10 @@ local function edit_option(which)
 	local current = ({width = width, fps = fps, filename = name_override,
 		directory = directory_override, caption = caption_text, speed = tostring(speed)})[which]
 	local prompt = ({
-		width = 'GIF width in px (max = source; blank = Original):',
-		fps = 'GIF FPS (max = source; blank = Original):',
+		width = 'Export width in px (max = source; blank = Original):',
+		fps = 'Export FPS (max = source; blank = Original):',
 		speed = 'Playback speed (0.25-4; blank = Normal 1x):',
-		filename = 'GIF filename (blank = Automatic):',
+		filename = 'Filename (blank = Automatic):',
 		directory = 'Save folder (blank = Beside video; folder must exist):',
 		caption = 'Custom caption (blank = Off):',
 	})[which]
@@ -1054,6 +1267,8 @@ local function advanced_summary()
 	local active = {}
 	if fps ~= '' then active[#active + 1] = fps .. ' FPS' end
 	if speed ~= 1 then active[#active + 1] = tostring(speed) .. 'x speed' end
+	if export_format == 'gif' then active[#active + 1] = 'GIF format'
+	elseif lossless_export then active[#active + 1] = 'Lossless' end
 	if caption_enabled then active[#active + 1] = 'Caption' end
 	if name_override ~= '' then active[#active + 1] = 'Filename' end
 	if directory_override ~= '' then active[#active + 1] = 'Folder' end
@@ -1078,13 +1293,13 @@ local menu_items = {
 	{label = 'Subtitles', value = subtitles_label, action = toggle_menu_subtitles},
 	{label = 'Custom caption', value = caption_label, action = function() edit_option('caption') end},
 	{label = 'Output filename', value = function()
-		return name_override == '' and 'Automatic' or name_override .. '.gif'
+		return name_override == '' and 'Automatic' or name_override .. (export_format == 'gif' and '.gif' or '.webp')
 	end, action = function() edit_option('filename') end},
 	{label = 'Output folder', value = function()
 		return directory_override == '' and 'Beside video' or shorten(directory_override, 65)
 	end, action = function() edit_option('directory') end},
-	{label = 'EXPORT GIF', value = function() return job and 'Busy: encoding...' or 'Create GIF' end,
-		action = export_gif},
+	{label = 'EXPORT', value = function() return job and 'Busy: encoding...' or ('Create ' .. (export_format == 'gif' and 'GIF' or 'WebP')) end,
+		action = export_media},
 	{label = 'Reset marks', value = function() return 'Clear both markers' end, action = function()
 		start_mark, end_mark = nil, nil
 		say('Start/end markers cleared.', 2)
@@ -1093,15 +1308,24 @@ local menu_items = {
 		return advanced_open and 'Hide  [-]' or 'Show  [+]'
 	end, action = function() advanced_open = not advanced_open end},
 	{label = 'Caption start', value = function()
-		return caption_start_mark and clock(caption_start_mark) or 'GIF start'
+		return caption_start_mark and clock(caption_start_mark) or 'Clip start'
 	end, action = function() mark_caption('start') end},
 	{label = 'Caption end', value = function()
-		return caption_end_mark and clock(caption_end_mark) or 'GIF end'
+		return caption_end_mark and clock(caption_end_mark) or 'Clip end'
 	end, action = function() mark_caption('end') end},
-	{label = 'Reset caption timing', value = function() return 'Show for full GIF' end,
+	{label = 'Reset caption timing', value = function() return 'Show for full export' end,
 		action = function()
 			caption_start_mark, caption_end_mark, caption_mark_source = nil, nil, nil
-			say('Caption timing reset to full GIF.', 2)
+			say('Caption timing reset to full export.', 2)
+		end},
+	{label = 'Lossless export (large)', value = function()
+		return export_format == 'gif' and 'N/A' or (lossless_export and 'Yes' or 'No')
+	end, action = function()
+		if export_format == 'webp' then lossless_export = not lossless_export end
+	end},
+	{label = 'Export format', value = function() return export_format == 'gif' and 'GIF (Legacy)' or 'WebP (Animated)' end,
+		action = function()
+			export_format = export_format == 'gif' and 'webp' or 'gif'
 		end},
 }
 
@@ -1139,8 +1363,7 @@ end
 
 local function menu_logo_watermark(lines, panel_x, panel_y, panel_w, panel_h)
     local base_size = 62.5
-    local scale = math.min((panel_w - 120) / base_size, (panel_h - 147) / base_size) * 100
-    scale = math.max(100, math.min(scale, 700))
+    local scale = 700
     local draw_size = base_size * scale / 100
     local x = panel_x + (panel_w - draw_size) / 2 + gui_offset_x
     local y = panel_y + (panel_h - draw_size) / 2 + gui_offset_y
@@ -1178,37 +1401,74 @@ local function menu_text(lines, x, y, content, size, color, align, bold)
 		align or 7, x, y, font, color, text)
 end
 
-local function menu_row(lines, index, y, label, value, compact, nested)
-	local selected = menu_index == index
+local function menu_selection(lines, x, y, width, height, marker_y, marker_height)
+	menu_shape(lines, x, y, width, height, 7, '514237', 70)
+	menu_shape(lines, x + 5, marker_y, 3, marker_height, 1, '21B6F2', 0)
+end
+
+local function menu_row(lines, index, y, label, value, compact, nested, disabled)
+	local selected = not disabled and menu_index == index
 	local indent = nested and 28 or 0
+	local row_height = compact and 35 or 40
+	local text_y = y + row_height / 2 - 2
 	if selected then
-		menu_shape(lines,365 + indent,y,550 - indent,compact and 36 or 40,7,'514237',70)
-		menu_shape(lines,370 + indent,y + 11,3,19,1,'21B6F2',0)
+		local marker_height = compact and 19 or 20
+		menu_selection(lines, 365 + indent, y, 550 - indent, row_height,
+			y + (row_height - marker_height) / 2, marker_height)
 	end
-	menu_text(lines, (selected and 399 or 394) + indent, y + 7, label, 25,
-		selected and 'FFFFFF' or 'E0E4EB', 7, true)
-	menu_text(lines, 899, y + 8, shorten(value, 32), 24,
-		selected and 'FFFFFF' or 'F0F2F5', 9, selected)
+	menu_text(lines, (selected and 399 or 394) + indent, text_y, label, 25,
+		disabled and '88929E' or (selected and 'FFFFFF' or 'E0E4EB'), 4, true)
+	menu_text(lines, 899, text_y, shorten(value, 32), 24,
+		disabled and '88929E' or (selected and 'FFFFFF' or 'F0F2F5'), 6, selected)
 end
 
 local function menu_section(lines, y, label, index, value)
 	local selected = index and menu_index == index
-	if selected then
-		menu_shape(lines,365,y - 5,550,33,7,'514237',70)
-		menu_shape(lines,370,y + 3,3,19,1,'21B6F2',0)
-	end
-	menu_text(lines, 380, y, label, 17, selected and 'FFFFFF' or '21B6F2', 7, true)
+	local text_y = index and (y + 11.5 - 2) or y
+	if selected then menu_selection(lines, 365, y - 5, 550, 33, y + 2, 19) end
+	menu_text(lines, 380, text_y, label, 17,
+		selected and 'FFFFFF' or '21B6F2', index and 4 or 7, true)
 	if value then
-		menu_text(lines, 899, y, value, 17, selected and 'FFFFFF' or 'BEC6D1', 9, selected)
+		menu_text(lines, 899, text_y, value, 17,
+			selected and 'FFFFFF' or 'BEC6D1', index and 6 or 9, selected)
 	end
+end
+
+local advanced_rows = {
+	{index = 4, label = 'Frame rate', strip = '%s+%[max.*$'},
+	{index = 5, label = 'Playback speed'},
+	{index = 17, label = 'Export format'},
+	{index = 16, label = 'Lossless export (large)', disabled_in_gif = true},
+	{index = 7, label = 'Custom caption', strip = '%s+%[Enter.*$'},
+	{index = 13, label = 'Caption start', caption_only = true, nested = true},
+	{index = 14, label = 'Caption end', caption_only = true, nested = true},
+	{index = 15, label = 'Reset caption timing', caption_only = true, nested = true},
+	{index = 8, label = 'Filename'},
+	{index = 9, label = 'Save to'},
+	{index = 11, label = 'Reset marks', display_value = 'Clear start and end'},
+}
+
+local function advanced_menu_rows()
+	local rows = {}
+	for _, row in ipairs(advanced_rows) do
+		if not row.caption_only or caption_enabled then rows[#rows + 1] = row end
+	end
+	return rows
+end
+
+local function menu_display_value(index, limits, strip)
+	local value = menu_items[index].value(limits)
+	return strip and (value:gsub(strip, '')) or value
 end
 
 local function visible_menu_items()
 	local items = {1, 2, 3, 6, 12}
 	if advanced_open then
-		local advanced_items = caption_enabled and {4, 5, 7, 13, 14, 15, 8, 9, 11}
-			or {4, 5, 7, 8, 9, 11}
-		for _, index in ipairs(advanced_items) do items[#items + 1] = index end
+		for _, row in ipairs(advanced_menu_rows()) do
+			if not (row.disabled_in_gif and export_format == 'gif') then
+				items[#items + 1] = row.index
+			end
+		end
 	end
 	items[#items + 1] = 10
 	return items
@@ -1220,67 +1480,61 @@ draw_menu = function()
 	local src = mp.get_property('filename') or '(no file)'
 	local limits = source_limits()
 	local caption_controls = advanced_open and caption_enabled
-	local panel_y = advanced_open and (caption_controls and 13 or 35) or 140
+	local summary = advanced_open and '' or advanced_summary()
+	local advanced_items = advanced_open and advanced_menu_rows() or {}
+	local row_step = caption_controls and 35 or 43
+	local panel_height = caption_controls and 560 or 571
+	if advanced_open then
+		panel_height = panel_height + #advanced_items * row_step
+	elseif summary ~= '' then
+		panel_height = panel_height + 27
+	end
+	local panel_y = math.floor((960 - panel_height) / 2)
 	local lines = {}
 
 	menu_shape(lines,375,panel_y + 24,4,39,2,'21B6F2',0)
-	menu_text(lines, 391, panel_y + 17, 'GIFit', 43, 'FFFFFF', 7, true)
-	menu_text(lines, 905, panel_y + 34, 'GIF EXPORTER (SDR ONLY)', 17, 'D1DAE6', 9, true)
+	menu_text(lines, 391, panel_y + 19, 'GIFit', 43, 'FFFFFF', 7, true)
+	menu_text(lines, 905, panel_y + 29, export_format == 'gif' and 'GIF EXPORTER' or 'ANIMATED WEBP EXPORTER', 17, 'D1DAE6', 9, true)
+	menu_text(lines, 905, panel_y + 44, '(SDR ONLY)', 17, 'D1DAE6', 9, true)
 	menu_text(lines, 379, panel_y + 84, shorten(src, 63), 19, 'E3E7ED', 7, false)
 	menu_shape(lines,375,panel_y + 127,530,1,0,'635850',85)
 
 	local y = panel_y + 141
 	menu_section(lines, y, 'TIMING')
 	y = y + 25
-	menu_row(lines, 1, y, 'Start', (menu_items[1].value(limits):gsub('%s+%[Enter.*$', '')))
+	menu_row(lines, 1, y, 'Start', (menu_display_value(1, limits, '%s+%[Enter.*$')))
 	y = y + 43
-	menu_row(lines, 2, y, 'End', (menu_items[2].value(limits):gsub('%s+%[Enter.*$', '')))
+	menu_row(lines, 2, y, 'End', (menu_display_value(2, limits, '%s+%[Enter.*$')))
 	y = y + 43
 	if start_mark and end_mark and end_mark > start_mark then
-		local duration = end_mark - start_mark
+		local duration = inclusive_timing(start_mark, end_mark, limits).duration
 		menu_text(lines, 394, y + 0, 'Clip  ' .. clock(duration), 19, 'D5DCE5', 7, false)
-		menu_text(lines, 899, y + 0, 'GIF  ' .. clock(duration / speed), 19, '21B6F2', 9, false)
+		menu_text(lines, 899, y + 0, (export_format == 'gif' and 'GIF' or 'WebP') .. '  ' .. clock(duration / speed), 19, '21B6F2', 9, false)
 	else
 		menu_text(lines, 394, y + 0, 'Mark both positions to see the duration', 19, 'C6CED9', 7, false)
 	end
-	y = y + (caption_controls and 36 or 40)
+	y = y + (caption_controls and 34 or 40)
 
 	menu_section(lines, y, 'VIDEO')
 	y = y + 24
-	menu_row(lines, 3, y, 'Width', menu_items[3].value(limits):gsub('%s+%[max.*$', ''))
+	menu_row(lines, 3, y, 'Width', menu_display_value(3, limits, '%s+%[max.*$'), true)
 	y = y + 43
 
-	menu_row(lines, 6, y, 'Subtitles', menu_items[6].value(limits):gsub('%s+%[Enter.*$', ''))
-	y = y + (caption_controls and 48 or 53)
+	menu_row(lines, 6, y, 'Subtitles', menu_display_value(6, limits, '%s+%[Enter.*$'), true)
+	y = y + 48
 
 	menu_section(lines, y, 'ADVANCED SETTINGS', 12, menu_items[12].value(limits))
-	y = y + (caption_controls and 29 or 32)
+	y = y + (caption_controls and 27 or 32)
 	if advanced_open then
-		local row_step = caption_controls and 36 or 43
-		menu_row(lines, 4, y, 'Frame rate', menu_items[4].value(limits):gsub('%s+%[max.*$', ''), caption_controls)
-		y = y + row_step
-		menu_row(lines, 5, y, 'Playback speed', menu_items[5].value(limits), caption_controls)
-		y = y + row_step
-		menu_row(lines, 7, y, 'Custom caption', menu_items[7].value(limits):gsub('%s+%[Enter.*$', ''), caption_controls)
-		y = y + row_step
-		if caption_controls then
-			menu_row(lines, 13, y, 'Caption start', menu_items[13].value(limits), true, true)
-			y = y + row_step
-			menu_row(lines, 14, y, 'Caption end', menu_items[14].value(limits), true, true)
-			y = y + row_step
-			menu_row(lines, 15, y, 'Reset caption timing', menu_items[15].value(limits), true, true)
+		for _, row in ipairs(advanced_items) do
+			local value = row.display_value or menu_display_value(row.index, limits, row.strip)
+			local disabled = row.disabled_in_gif and export_format == 'gif'
+			menu_row(lines, row.index, y, row.label, value, caption_controls, row.nested, disabled)
 			y = y + row_step
 		end
-		menu_row(lines, 8, y, 'Filename', menu_items[8].value(limits), caption_controls)
-		y = y + row_step
-		menu_row(lines, 9, y, 'Save to', menu_items[9].value(limits), caption_controls)
-		y = y + row_step
-		menu_row(lines, 11, y, 'Reset marks', 'Clear start and end', caption_controls)
-		y = y + row_step
 	else
-		local summary = advanced_summary()
 		if summary ~= '' then
-			menu_text(lines, 394, y, shorten(summary, 70), 19, 'D5DCE5', 7, false)
+			menu_text(lines, 640, y, shorten(summary, 70), 19, 'D5DCE5', 8, false)
 			y = y + 27
 		end
 	end
@@ -1288,7 +1542,7 @@ draw_menu = function()
 	menu_shape(lines,375,y + 12,530,1,0,'635850',85)
 	y = y + 25
 	menu_shape(lines,365,y,550,51,8,menu_index == 10 and '21B6F2' or '635850',menu_index == 10 and 18 or 80)
-	menu_text(lines, 640, y + 25, job and 'ENCODING...' or 'EXPORT GIF', 25, 'FFFFFF', 5, true)
+	menu_text(lines, 640, y + 25.5, job and 'ENCODING...' or ('EXPORT ' .. (export_format == 'gif' and 'GIF' or 'WEBP')), 25, 'FFFFFF', 5, true)
 	y = y + 60
 	menu_text(lines, 640, y + 9, 'UP/DOWN  Navigate     ENTER  Select     ESC  Close',
 		17, 'D5DCE5', 8, false)
@@ -1346,6 +1600,8 @@ mp.register_event('file-loaded', function()
 	if menu_open then close_menu() end
 	start_mark, end_mark, mark_source = nil, nil, nil
 	name_override = ''
+	width = ''
+	subtitles_enabled = false
 	caption_text, caption_enabled = '', false
 	caption_start_mark, caption_end_mark, caption_mark_source = nil, nil, nil
 	advanced_open = false
@@ -1362,4 +1618,4 @@ end)
 
 cleanup_abandoned_temp_files()
 
-mp.msg.info('GIFit loaded: Ctrl+g menu; start/end markers are menu items; FFmpeg=' .. cfg.ffmpeg)
+mp.msg.info('GIFit loaded: Ctrl+g menu; start/end markers are menu items; FFmpeg=' .. cfg.ffmpeg .. '; FFprobe=' .. probe_exe)
