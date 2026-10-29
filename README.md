@@ -14,14 +14,24 @@ This repository hosts the files and provides a place to submit issues or pull re
 
 ## **Quick Summary of Features:**
 
-- High quality [GPU Next](https://github.com/mpv-player/mpv/wiki/GPU-Next-vs-GPU) video scaling
-- SDR colorspace auto profiles for consistent and proper playback using GPU Next
-- HDR & Dolby Vision to SDR auto tone mapping profiles
-- Custom subtitle styling for files without embedded fonts (e.g., .srt)
-- Auto profiles for scaling control and weaker hardware
-- Improved screenshot output with detailed naming and correct colors
-- Built in right click context menu
-- Minor UI changes
+- [GPU Next](https://github.com/mpv-player/mpv/wiki/GPU-Next-vs-GPU) + d3d11 Windows playback with hardware decoding
+- Automatic SDR/HDR/DV color management and tonemapping profiles
+- Polar scaling and aspect ratio aware scaling with source specific tuning
+- Automatic debanding and dithering profiles for WEB-DL and other source types
+- Advanced subtitle styling for SRT, ASS/SSA (8-Bit WEB only), VOBSUB, and PGS subtitles
+- Subtitle cleanup for long SRT blocks
+- Greyed VOBSUB styling and soft blur PGS subtitle treatment
+- On the fly center channel volume adjustment for multi channel audio (ctrl+scroll-wheel)
+- Bundled Gandhi Sans font
+- Custom OSC and right click context menu
+- Thumbfast thumbnail previews
+- Auto playlist loading and next file navigation
+- Persistent player state across sessions
+- Smart screenshot system with detailed naming, custom save path, and OptiPNG optimization
+- Custom GUI WebP/GIF export with subtitle support (ctrl+g)
+- Extensive custom input bindings for playback, video, audio
+- Windows installer, updater, and uninstaller support
+- Bundled ffmpeg, ffprobe, and OptiPNG utilities (Windows only)
 
 *Note: We encourage everyone who downloads it to experiment with settings, key binds, and customization.  
 Refer to the MPV manual for changing specific settings.*
