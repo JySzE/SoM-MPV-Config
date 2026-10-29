@@ -35,7 +35,6 @@ If you find our projects useful, consider supporting here:
 - Smart screenshot system with detailed naming, custom save path, and OptiPNG optimization
 - Custom GUI WebP/GIF export with subtitle support (ctrl+g)
 - Extensive custom input bindings for playback, video, audio
-- Windows installer, updater, and uninstaller support
 
 *Note: We encourage everyone who downloads it to experiment with settings, key binds, and customization.  
 Refer to the MPV manual for changing specific settings.*
