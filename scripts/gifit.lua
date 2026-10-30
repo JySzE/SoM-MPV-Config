@@ -1,5 +1,5 @@
--- Version 1.2
--- 10/28/26
+-- Version 1.2a
+-- 10/30/26
 -- by [SoM] Nikosan
 
 -- Ctrl+g: open/close the export menu. Mark start/end from inside the menu.
@@ -13,8 +13,10 @@ local exec_dir = mp.command_native({'expand-path', '~~/exec'})
 
 local function executable_path(name)
 	local bundled = utils.join_path(exec_dir, name)
-	local bundled_info = utils.file_info(bundled)
-	if bundled_info and bundled_info.is_file then return bundled end
+	if is_windows_os then
+		local bundled_info = utils.file_info(bundled)
+		if bundled_info and bundled_info.is_file then return bundled end
+	end
 	local separator = is_windows_os and ';' or ':'
 	for dir in (os.getenv('PATH') or ''):gmatch('[^' .. separator .. ']+') do
 		dir = dir:match('^%s*(.-)%s*$')
@@ -27,7 +29,7 @@ local function executable_path(name)
 			if info and info.is_file then return candidate end
 		end
 	end
-	return bundled
+	return is_windows_os and bundled or name
 end
 
 local cfg = {
@@ -242,7 +244,7 @@ end
 
 local function ass_escape(s)
 	s = tostring(s or ''):gsub('[\r\n]', ' ')
-	return (s:gsub('\\', '\\\\'):gsub('{', '\\{'):gsub('}', '\\}'))
+	return (s:gsub('\\', '\\\226\129\160'):gsub('{', '\\{'):gsub('}', '\\}'))
 end
 
 local function shorten(s, limit)
@@ -1494,8 +1496,7 @@ draw_menu = function()
 
 	menu_shape(lines,375,panel_y + 24,4,39,2,'21B6F2',0)
 	menu_text(lines, 391, panel_y + 19, 'GIFit', 43, 'FFFFFF', 7, true)
-	menu_text(lines, 905, panel_y + 29, export_format == 'gif' and 'GIF EXPORTER' or 'ANIMATED WEBP EXPORTER', 17, 'D1DAE6', 9, true)
-	menu_text(lines, 905, panel_y + 44, '(SDR ONLY)', 17, 'D1DAE6', 9, true)
+	menu_text(lines, 905, panel_y + 32, export_format == 'gif' and 'GIF EXPORTER (SDR)' or 'ANIMATED WEBP EXPORTER (SDR)', 17, 'D1DAE6', 9, true)
 	menu_text(lines, 379, panel_y + 84, shorten(src, 63), 19, 'E3E7ED', 7, false)
 	menu_shape(lines,375,panel_y + 127,530,1,0,'635850',85)
 
