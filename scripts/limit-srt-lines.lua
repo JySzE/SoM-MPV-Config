@@ -1,3 +1,6 @@
+-- Version 1.2
+-- 11/04/26
+
 local MAX_LINES = 2
 
 local IGNORE_CODECS = {
@@ -39,14 +42,16 @@ local function build_style_tags(osd_w, osd_h, ml, mt, mr, mb)
     local video_h = osd_h - mt - mb
     local scale = video_h / 720
 
+    local sub_scale = mp.get_property_number("sub-scale", 1.0)
+
     local font       = mp.get_property("sub-font", "Gandhi Sans")
-    local font_size  = mp.get_property_number("sub-font-size", 48) * scale
+    local font_size  = mp.get_property_number("sub-font-size", 48) * scale * sub_scale
     local bold       = mp.get_property_bool("sub-bold", true) and "\\b1" or "\\b0"
     local italic     = mp.get_property_bool("sub-italic", false) and "\\i1" or "\\i0"
-    local bord       = mp.get_property_number("sub-outline-size", 2.4) * scale
-    local shad       = mp.get_property_number("sub-shadow-offset", 1) * scale
+    local bord       = mp.get_property_number("sub-outline-size", 2.4) * scale * sub_scale
+    local shad       = mp.get_property_number("sub-shadow-offset", 1) * scale * sub_scale
     local blur       = mp.get_property_number("sub-blur", 0)
-    local spacing    = mp.get_property_number("sub-spacing", 0) * scale
+    local spacing    = mp.get_property_number("sub-spacing", 0) * scale * sub_scale
     local margin_x   = mp.get_property_number("sub-margin-x", 80) * scale
     local margin_y   = mp.get_property_number("sub-margin-y", 50) * scale
 
@@ -125,6 +130,13 @@ end
 
 mp.observe_property("track-list", "native", update_mode)
 mp.observe_property("sid", "native", update_mode)
+
+mp.observe_property("sub-scale", "native", function()
+    if osd_active then
+        local current_text = mp.get_property("sub-text")
+        if current_text then render_osd_text(nil, current_text) end
+    end
+end)
 
 mp.register_event("end-file", function()
     set_osd_mode(false)
