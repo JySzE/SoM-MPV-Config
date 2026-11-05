@@ -1,4 +1,4 @@
-﻿-- This script automatically loads playlist entries before and after the
+-- This script automatically loads playlist entries before and after the
 -- currently played file. It does so by scanning the directory a file is
 -- located in when starting playback. It sorts the directory entries
 -- alphabetically, and adds entries before and after the current file to
