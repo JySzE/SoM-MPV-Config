@@ -1,5 +1,5 @@
--- Version 1.2a
--- 10/30/26
+-- Version 1.2b
+-- 11/06/26
 -- by [SoM] Nikosan
 
 -- Ctrl+g: open/close the export menu. Mark start/end from inside the menu.
