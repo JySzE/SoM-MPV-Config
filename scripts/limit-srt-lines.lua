@@ -1,5 +1,5 @@
--- Version 1.2
--- 11/04/26
+-- Version 1.3
+-- 11/06/26
 
 local MAX_LINES = 2
 
@@ -43,6 +43,7 @@ local function build_style_tags(osd_w, osd_h, ml, mt, mr, mb)
     local scale = video_h / 720
 
     local sub_scale = mp.get_property_number("sub-scale", 1.0)
+    local sub_pos   = mp.get_property_number("sub-pos", 100.0)
 
     local font       = mp.get_property("sub-font", "Gandhi Sans")
     local font_size  = mp.get_property_number("sub-font-size", 48) * scale * sub_scale
@@ -67,9 +68,13 @@ local function build_style_tags(osd_w, osd_h, ml, mt, mr, mb)
     else pos_x = osd_w / 2 end
 
     local pos_y
-    if align_y == "top" then pos_y = margin_y
-    elseif align_y == "center" then pos_y = osd_h / 2
-    else pos_y = osd_h - margin_y end
+    if sub_pos ~= 100.0 then
+        pos_y = (osd_h * sub_pos) / 100.0
+    else
+        if align_y == "top" then pos_y = margin_y + mt
+        elseif align_y == "center" then pos_y = osd_h / 2
+        else pos_y = osd_h - margin_y - mb end
+    end
 
     return string.format(
         "{\\pos(%d,%d)\\an%d\\fn%s\\fs%.1f%s%s\\bord%.2f\\shad%.2f\\blur%.2f\\fsp%.2f" ..
@@ -132,6 +137,27 @@ mp.observe_property("track-list", "native", update_mode)
 mp.observe_property("sid", "native", update_mode)
 
 mp.observe_property("sub-scale", "native", function()
+    if osd_active then
+        local current_text = mp.get_property("sub-text")
+        if current_text then render_osd_text(nil, current_text) end
+    end
+end)
+
+mp.observe_property("sub-pos", "native", function()
+    if osd_active then
+        local current_text = mp.get_property("sub-text")
+        if current_text then render_osd_text(nil, current_text) end
+    end
+end)
+
+mp.observe_property("sub-margin-y", "native", function()
+    if osd_active then
+        local current_text = mp.get_property("sub-text")
+        if current_text then render_osd_text(nil, current_text) end
+    end
+end)
+
+mp.observe_property("sub-margin-x", "native", function()
     if osd_active then
         local current_text = mp.get_property("sub-text")
         if current_text then render_osd_text(nil, current_text) end
