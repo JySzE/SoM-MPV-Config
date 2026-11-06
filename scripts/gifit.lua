@@ -427,8 +427,8 @@ local function subtitle_style()
 		add('MarginR', margin)
 	end
 	local margin_y = ((number('sub-margin-y') or 0) + (number('sub-margin-y-offset') or 0)) * scale
-	local position = number('sub-pos')
-	if position and y == 'bottom' then margin_y = margin_y + (100 - position) * 7.2 end
+	local position = number('sub-pos') or 100
+	if y == 'bottom' then margin_y = margin_y * (position / 100) + (100 - position) * 7.2 end
 	add('MarginV', math.floor(math.max(0, margin_y) * style_scale + 0.5))
 	if #style == 0 then return nil end
 	return "'" .. table.concat(style, ',') .. "'"
