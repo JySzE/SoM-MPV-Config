@@ -45,9 +45,19 @@ Refer to the MPV manual for changing specific settings.*
 
 ## **Manual Download**
 1. Dependencies: MPV v0.42.0 or newer, OptiPNG, Git, FFmpeg, FFprobe
-2. Open terminal and run `git clone -b main-linux-wip --depth 1 https://github.com/JySzE/SoM-MPV-Config ~/.config/mpv/`
+2. Open terminal and run 
+
+```
+git clone -b main-linux-wip --depth 1 https://github.com/JySzE/SoM-MPV-Config ~/.config/mpv/ 
+```
+
 3. Open MPV and enjoy.
 
 ## **Manual Update**
-1. Open terminal and run `find ~/.config/mpv -mindepth 1 -exec rm -rf {} +; git clone -b main-linux-wip --depth 1 https://github.com/JySzE/SoM-MPV-Config ~/.config/mpv`
+1. Open terminal and run 
+
+``` 
+find ~/.config/mpv -mindepth 1 -exec rm -rf {} +; git clone -b main-linux-wip --depth 1 https://github.com/JySzE/SoM-MPV-Config ~/.config/mpv 
+```
+
 2. Open MPV and enjoy.
