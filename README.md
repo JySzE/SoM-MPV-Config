@@ -56,8 +56,8 @@ Refer to the MPV manual for changing specific settings.*
 
 ## **Option 1: PowerShell (Recommended)**
 1. Turn off your VPN to avoid Cloudflare bot protection
-2. Open Powershell and [change your current directory](https://powershellfaqs.com/change-directory-in-powershell/) to a user folder
-3. Run: `irm https://tinyurl.com/sommpv | iex`
+2. Open Powershell and change your current directory to a user folder; Desktop Example: `cd $HOME\Desktop`
+3. After Run: `irm https://tinyurl.com/sommpv | iex`
 4. Choose your setup method:
    - **Portable Mode** (SoM_MPV_Builder):
      - Must be in a non protected folders such as  `Documents`, `Downloads`, `Desktop`, etc
